@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 import rospy, pykeyboard
-from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle
+import subprocess
+from std_msgs.msg import String, Empty
+from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo
+from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
 
 class VLCController(object):
 	def __init__(self):
-		self._paused = True
+		self._paused = False
 		self._muted = False
 		self._time = rospy.Duration(0)
 		t = rospy.Timer(rospy.Duration(1), self._tick)
@@ -24,6 +27,10 @@ class VLCController(object):
 
 	def get_state(self):
 		return PlayerState(self._time, self._paused, self._muted)
+
+	def toggle_fullscreen(self, *args):
+		self._keyboard.tap_key('f')
+		return self.get_state()
 
 	def playpause(self):
 		self._keyboard.tap_key(' ')
@@ -58,6 +65,19 @@ class VLCController(object):
 		self._muted = not self._muted
 		return self.get_state()
 
+	def start_vlc(self, msg):
+		vid_path = msg.path
+		self._paused = False
+		self._muted = False
+		self._time = rospy.Duration(0)
+		rospy.Timer(
+			rospy.Duration(0.00001),
+			lambda x: subprocess.call('vlc --play-and-exit %s' % vid_path, shell=True), oneshot=True
+		)
+		rospy.Timer(rospy.Duration(0.35), self.toggle_fullscreen, oneshot=True)
+		print 'ok'
+		return StartVideoResponse()
+		
 
 if __name__ == '__main__':
 	rospy.init_node('vlc')
@@ -69,5 +89,8 @@ if __name__ == '__main__':
 	back_service = rospy.Service('back10', Back10, vlc.back10)	
 	forward_service = rospy.Service('forward10', Forward10, vlc.forward10)	
 	mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)	
+	fullscreen_service = rospy.Service('toggle_fullscreen', FullscreenToggle, vlc.toggle_fullscreen)
+
+	video_play_service = rospy.Service('start_video', StartVideo, vlc.start_vlc)
 
 	rospy.spin()
