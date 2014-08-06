@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy, pykeyboard
 import subprocess
-from std_msgs.msg import String, Empty
+from std_msgs.msg import String, Empty, Duration
 from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo
 from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
@@ -13,6 +13,7 @@ class VLCController(object):
 		self._time = rospy.Duration(0)
 		t = rospy.Timer(rospy.Duration(1), self._tick)
 		self._keyboard = pykeyboard.PyKeyboard()
+		self.time_pub = rospy.Publisher('playback_time', Duration)
 
 	def _send_sequence(self, *args):
 		for key in args:
@@ -24,6 +25,7 @@ class VLCController(object):
 	def _tick(self, *args):
 		if not self._paused:
 			self._time += rospy.Duration(1)
+		self.time_pub.publish(self._time)
 
 	def get_state(self):
 		return PlayerState(self._time, self._paused, self._muted)
@@ -78,7 +80,6 @@ class VLCController(object):
 		print 'ok'
 		return StartVideoResponse()
 		
-
 if __name__ == '__main__':
 	rospy.init_node('vlc')
 
