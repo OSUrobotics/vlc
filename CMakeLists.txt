@@ -24,6 +24,8 @@ add_service_files(
    MuteToggle.srv   
    FullscreenToggle.srv   
    StartVideo.srv
+   VolUp.srv
+   VolDn.srv
 )
 
 catkin_python_setup()

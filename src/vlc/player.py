@@ -2,7 +2,7 @@
 import rospy, pykeyboard
 import subprocess
 from std_msgs.msg import String, Empty, Duration
-from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo
+from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
 from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
 
@@ -67,6 +67,14 @@ class VLCController(object):
 		self._muted = not self._muted
 		return self.get_state()
 
+	def vol_up(self, *args):
+		self._send_sequence(self._keyboard.control_key, self._keyboard.up_key)
+		return self.get_state()
+
+	def vol_dn(self, *args):
+		self._send_sequence(self._keyboard.control_key, self._keyboard.down_key)
+		return self.get_state()
+
 	def start_vlc(self, msg):
 		vid_path = msg.path
 		self._paused = False
@@ -93,5 +101,7 @@ if __name__ == '__main__':
 	fullscreen_service = rospy.Service('toggle_fullscreen', FullscreenToggle, vlc.toggle_fullscreen)
 
 	video_play_service = rospy.Service('start_video', StartVideo, vlc.start_vlc)
+	vol_up_service = rospy.Service('vol_up', VolUp, vlc.vol_up)
+	vol_dn_service = rospy.Service('vol_dn', VolDn, vlc.vol_dn)
 
 	rospy.spin()
