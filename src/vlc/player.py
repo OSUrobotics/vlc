@@ -5,15 +5,210 @@ from std_msgs.msg import String, Empty, Duration
 from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
 from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
+import abc
+from lxml import objectify
+import urllib, urllib2
 
 class VLCController(object):
-    def __init__(self):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, use_http):
         self._paused = False
         self._muted = False
         self._time = rospy.Duration(0)
+        self.time_pub = rospy.Publisher('playback_time', Duration)
+        self._http = use_http
+
+    @abc.abstractmethod
+    def _wait_for_vlc(self):
+        '''Blocks until VLC is available'''
+        return
+
+    @abc.abstractmethod
+    def get_state(self):
+        '''Returns the player state as a service response'''
+        return
+
+    @abc.abstractmethod
+    def toggle_fullscreen(self, *args):
+        '''Toggles fullscreen'''
+        return
+
+    @abc.abstractmethod
+    def playpause(self):
+        '''Toggles play/pause'''
+        return
+
+    @abc.abstractmethod
+    def play(self, *args):
+        '''Play. Does nothing if already playing'''
+        return
+
+    @abc.abstractmethod
+    def pause(self, *args): 
+        '''Pause. Does nothing if already paused'''
+        return
+
+    @abc.abstractmethod
+    def back10(self, *args):
+        '''Skip back 10 seconds'''
+        return
+
+    @abc.abstractmethod
+    def forward10(self, *args):
+        '''Skip forward 10 seconds'''
+        return
+
+    @abc.abstractmethod
+    def mute(self, *args):
+        '''Toggles mute'''
+        return
+
+    @abc.abstractmethod
+    def vol_up(self, *args):
+        '''Increase volume'''
+        return
+
+    @abc.abstractmethod
+    def vol_dn(self, *args):
+        '''Decrease volume'''
+        return
+
+    def start_vlc(self, msg):
+        vid_path = msg.path
+        # import pdb; pdb.set_trace()
+        self._paused = False
+        self._muted = False
+        self._time = rospy.Duration(0)
+        rospy.Timer(
+            rospy.Duration(0.00001),
+            lambda x: subprocess.call('vlc %s --play-and-exit "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
+        )
+        print 'waiting for vlc'
+        self._wait_for_vlc()
+        print 'vlc ready'
+        # rospy.Timer(rospy.Duration(0.35), self.toggle_fullscreen, oneshot=True)
+        self.toggle_fullscreen()
+        return StartVideoResponse()
+        
+class HttpController(VLCController):
+    def __init__(self):
+        super(HttpController, self).__init__(True)
+        self._url = 'http://localhost:8080/requests/status.xml'
+        self.status = None
+
+    def _wait_for_vlc(self):
+        ready1 = False
+        ready2 = False
+        resp = None
+        try:
+            resp = urllib2.urlopen(self._url).read()
+            ready1 = True
+            print 'ready1'
+        except Exception as e:
+            print 'ex1'
+            print e
+            rospy.sleep(0.01)
+        try:
+            print 'time=',objectify.fromstring(resp).time
+            ready2 = True
+            print 'ready2'
+        except Exception as e:
+            print 'ex2:'
+            print e
+            rospy.sleep(0.01)
+
+        if not (ready1 or ready2):
+            self._wait_for_vlc()
+        self._update_state(update_vol=True)
+        rospy.sleep(0.01)
+
+    def _send_command(self, command, val=''):
+        url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
+        resp = urllib2.urlopen(url).read()
+        self.state = objectify.fromstring(resp)
+        return self.state
+
+    def _update_state(self, update_vol=False):
+        self.state = self._send_command('')
+        if update_vol:
+            self._vol = self.state.volume
+
+    def get_state(self):
+        try:
+            return PlayerState(
+                max(rospy.Duration(self.state.time), rospy.Duration(0)),
+                self.state.state == 'paused',
+                self._muted
+            )
+        except:
+            import pdb; pdb.set_trace()
+
+    def play(self, *args):
+        self._send_command('pl_play')
+        return self.get_state()
+
+    def pause(self, *args):
+        self._send_command('pl_pause')
+        return self.get_state()
+
+    def back10(self, *args):
+        '''Go back 10 seconds'''
+        self._send_command('seek', '-10')
+        return self.get_state()
+
+    def forward10(self, *args):
+        '''Skip forward 10 seconds'''
+        self._send_command('seek', '+10')
+        return self.get_state()
+
+    def mute(self, *args):
+        '''Toggles mute'''
+        if self._muted:
+            self._send_command('volume', self._vol)
+            self._muted = False
+        else:
+            self._send_command('volume', 0)
+            self._muted = True
+        return self.get_state()
+
+    def vol_up(self, *args):
+        '''Increase volume'''
+        self._send_command('volume', '+15')
+        self._vol = self.state.volume
+        return self.get_state()
+
+    def vol_dn(self, *args):
+        '''Lower volume'''
+        self._send_command('volume', '-15')
+        self._vol = self.state.volume
+        return self.get_state()
+
+    def toggle_fullscreen(self, *args):
+        '''Toggles fullscreen'''
+        self._send_command('fullscreen')
+        return self.get_state()
+
+    def playpause(self):
+        '''Toggles play/pause'''
+        if self._paused:
+            self.play()
+        else:
+            self.pause()
+        return self.get_state()
+
+
+class KeyboardController(VLCController):
+    def __init__(self):
+        super(KeyboardController, self).__init__(False)
         t = rospy.Timer(rospy.Duration(1), self._tick)
         self._keyboard = pykeyboard.PyKeyboard()
-        self.time_pub = rospy.Publisher('playback_time', Duration)
+
+    def get_state(self):
+        return PlayerState(self._time, self._paused, self._muted)
+
+    def _wait_for_vlc(self):
+        rospy.sleep(0.35)
 
     def _send_sequence(self, *args):
         for key in args:
@@ -75,22 +270,11 @@ class VLCController(object):
         self._send_sequence(self._keyboard.control_key, self._keyboard.down_key)
         return self.get_state()
 
-    def start_vlc(self, msg):
-        vid_path = msg.path
-        self._paused = False
-        self._muted = False
-        self._time = rospy.Duration(0)
-        rospy.Timer(
-            rospy.Duration(0.00001),
-            lambda x: subprocess.call('vlc --play-and-exit %s' % vid_path, shell=True), oneshot=True
-        )
-        rospy.Timer(rospy.Duration(0.35), self.toggle_fullscreen, oneshot=True)
-        return StartVideoResponse()
-        
+
 if __name__ == '__main__':
     rospy.init_node('vlc')
 
-    vlc = VLCController()
+    vlc = HttpController()
 
     play_service = rospy.Service('play', Play, vlc.play)    
     pause_service = rospy.Service('pause', Pause, vlc.pause)    
