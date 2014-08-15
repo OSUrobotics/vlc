@@ -76,7 +76,6 @@ class VLCController(object):
 
     def start_vlc(self, msg):
         vid_path = msg.path
-        # import pdb; pdb.set_trace()
         self._paused = False
         self._muted = False
         self._time = rospy.Duration(0)
@@ -84,10 +83,7 @@ class VLCController(object):
             rospy.Duration(0.00001),
             lambda x: subprocess.call('vlc %s --play-and-exit "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
         )
-        print 'waiting for vlc'
         self._wait_for_vlc()
-        print 'vlc ready'
-        # rospy.Timer(rospy.Duration(0.35), self.toggle_fullscreen, oneshot=True)
         self.toggle_fullscreen()
         return StartVideoResponse()
         
@@ -98,30 +94,15 @@ class HttpController(VLCController):
         self.status = None
 
     def _wait_for_vlc(self):
-        ready1 = False
-        ready2 = False
-        resp = None
         try:
             resp = urllib2.urlopen(self._url).read()
-            ready1 = True
-            print 'ready1'
+            objectify.fromstring(resp).time
         except Exception as e:
-            print 'ex1'
-            print e
             rospy.sleep(0.01)
-        try:
-            print 'time=',objectify.fromstring(resp).time
-            ready2 = True
-            print 'ready2'
-        except Exception as e:
-            print 'ex2:'
-            print e
-            rospy.sleep(0.01)
-
-        if not (ready1 or ready2):
             self._wait_for_vlc()
+
         self._update_state(update_vol=True)
-        rospy.sleep(0.01)
+        rospy.sleep(0.05)
 
     def _send_command(self, command, val=''):
         url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
@@ -135,14 +116,11 @@ class HttpController(VLCController):
             self._vol = self.state.volume
 
     def get_state(self):
-        try:
-            return PlayerState(
-                max(rospy.Duration(self.state.time), rospy.Duration(0)),
-                self.state.state == 'paused',
-                self._muted
-            )
-        except:
-            import pdb; pdb.set_trace()
+        return PlayerState(
+            max(rospy.Duration(self.state.time), rospy.Duration(0)),
+            self.state.state == 'paused',
+            self._muted
+        )
 
     def play(self, *args):
         self._send_command('pl_play')
