@@ -18,11 +18,15 @@ class VLCController(object):
         self._time = rospy.Duration(0)
         self.time_pub = rospy.Publisher('playback_time', Duration)
         self._http = use_http
-        t = rospy.Timer(rospy.Duration(1), self._tick)
 
     def _tick(self, *args):
+        self._update_state()
         self.time_pub.publish(self._time)
-        print 'tick'
+
+    @abc.abstractmethod
+    def _update_state(self):
+        '''Updates the player's state'''
+        return
 
     @abc.abstractmethod
     def _wait_for_vlc(self):
@@ -84,6 +88,7 @@ class VLCController(object):
         self._paused = False
         self._muted = False
         self._time = rospy.Duration(0)
+        tic_timer = rospy.Timer(rospy.Duration(1), self._tick)
         rospy.Timer(
             rospy.Duration(0.00001),
             lambda x: subprocess.call('vlc %s --play-and-exit "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
@@ -121,6 +126,7 @@ class HttpController(VLCController):
         self.state = self._send_command('')
         if update_vol:
             self._vol = self.state.volume
+        self._time = rospy.Duration(self.state.time)
 
     def get_state(self):
         return PlayerState(
