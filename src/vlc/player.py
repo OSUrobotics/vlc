@@ -18,6 +18,11 @@ class VLCController(object):
         self._time = rospy.Duration(0)
         self.time_pub = rospy.Publisher('playback_time', Duration)
         self._http = use_http
+        t = rospy.Timer(rospy.Duration(1), self._tick)
+
+    def _tick(self, *args):
+        self.time_pub.publish(self._time)
+        print 'tick'
 
     @abc.abstractmethod
     def _wait_for_vlc(self):
@@ -85,6 +90,7 @@ class VLCController(object):
         )
         self._wait_for_vlc()
         self.toggle_fullscreen()
+        rospy.set_param('vlc_ready', True)
         return StartVideoResponse()
         
 class HttpController(VLCController):
@@ -108,6 +114,7 @@ class HttpController(VLCController):
         url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
         resp = urllib2.urlopen(url).read()
         self.state = objectify.fromstring(resp)
+        self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
         return self.state
 
     def _update_state(self, update_vol=False):
@@ -117,7 +124,7 @@ class HttpController(VLCController):
 
     def get_state(self):
         return PlayerState(
-            max(rospy.Duration(self.state.time), rospy.Duration(0)),
+            self._time,
             self.state.state == 'paused',
             self._muted
         )
@@ -179,7 +186,6 @@ class HttpController(VLCController):
 class KeyboardController(VLCController):
     def __init__(self):
         super(KeyboardController, self).__init__(False)
-        t = rospy.Timer(rospy.Duration(1), self._tick)
         self._keyboard = pykeyboard.PyKeyboard()
 
     def get_state(self):
