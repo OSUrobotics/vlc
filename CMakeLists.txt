@@ -19,6 +19,7 @@ add_service_files(
    FILES
    Play.srv
    Pause.srv
+   Stop.srv
    Back10.srv
    Forward10.srv
    MuteToggle.srv   

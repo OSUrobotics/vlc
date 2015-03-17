@@ -2,7 +2,7 @@
 import rospy, pykeyboard
 import subprocess
 from std_msgs.msg import String, Empty, Duration
-from vlc.srv import Play, Pause, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
+from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
 from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
 import abc
@@ -83,6 +83,11 @@ class VLCController(object):
         '''Decrease volume'''
         return
 
+    @abc.abstractmethod
+    def stop(self, *args):
+        '''Stop playback'''
+        return
+
     def start_vlc(self, msg):
         vid_path = msg.path
         self._paused = False
@@ -142,6 +147,10 @@ class HttpController(VLCController):
     def pause(self, *args):
         self._send_command('pl_pause')
         return self.get_state()
+
+    def stop(self, *args):
+        self._send_command('pl_stop')
+        return self.get_state()        
 
     def back10(self, *args):
         '''Go back 10 seconds'''
@@ -267,7 +276,8 @@ if __name__ == '__main__':
     vlc = HttpController()
 
     play_service = rospy.Service('play', Play, vlc.play)    
-    pause_service = rospy.Service('pause', Pause, vlc.pause)    
+    pause_service = rospy.Service('pause', Pause, vlc.pause)   
+    stop = rospy.Service('stop', Stop, vlc.stop)
     back_service = rospy.Service('back10', Back10, vlc.back10)  
     forward_service = rospy.Service('forward10', Forward10, vlc.forward10)  
     mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)   
