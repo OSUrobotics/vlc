@@ -96,7 +96,7 @@ class VLCController(object):
         tic_timer = rospy.Timer(rospy.Duration(1), self._tick)
         rospy.Timer(
             rospy.Duration(0.00001),
-            lambda x: subprocess.call('vlc %s --play-and-exit "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
+            lambda x: subprocess.call('vlc %s --play-and-pause "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
         )
         self._wait_for_vlc()
         self.toggle_fullscreen()
