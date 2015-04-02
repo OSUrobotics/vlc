@@ -124,14 +124,20 @@ class HttpController(VLCController):
         url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
         resp = urllib2.urlopen(url).read()
         self.state = objectify.fromstring(resp)
-        self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
+        try:
+            self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
+        except AttributeError as e:
+            rospy.logwarn("Couldn't get player time")
         return self.state
 
     def _update_state(self, update_vol=False):
         self.state = self._send_command('')
         if update_vol:
             self._vol = self.state.volume
-        self._time = rospy.Duration(self.state.time)
+        try:
+            self._time = rospy.Duration(self.state.time)
+        except AttributeError as e:
+            rospy.logwarn("Couldn't get player time")
 
     def get_state(self):
         return PlayerState(
