@@ -1,13 +1,17 @@
 #!/usr/bin/env python
-import rospy, pykeyboard
+import rospy
+import pykeyboard
 import subprocess
-from std_msgs.msg import String, Empty, Duration
-from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
+from std_msgs.msg import Duration
+from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle,\
+    FullscreenToggle, StartVideo, VolUp, VolDn
 from vlc.srv import StartVideoResponse
 from vlc.msg import PlayerState
 import abc
 from lxml import objectify
-import urllib, urllib2
+import urllib
+import urllib2
+
 
 class VLCController(object):
     __metaclass__ = abc.ABCMeta
@@ -54,7 +58,7 @@ class VLCController(object):
         return
 
     @abc.abstractmethod
-    def pause(self, *args): 
+    def pause(self, *args):
         '''Pause. Does nothing if already paused'''
         return
 
@@ -93,7 +97,7 @@ class VLCController(object):
         self._paused = False
         self._muted = False
         self._time = rospy.Duration(0)
-        tic_timer = rospy.Timer(rospy.Duration(1), self._tick)
+        self._tic_timer = rospy.Timer(rospy.Duration(1), self._tick)
         rospy.Timer(
             rospy.Duration(0.00001),
             lambda x: subprocess.call('vlc %s --play-and-pause "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
@@ -102,7 +106,8 @@ class VLCController(object):
         self.toggle_fullscreen()
         rospy.set_param('vlc_ready', True)
         return StartVideoResponse()
-        
+
+
 class HttpController(VLCController):
     def __init__(self):
         super(HttpController, self).__init__(True)
@@ -113,7 +118,7 @@ class HttpController(VLCController):
         try:
             resp = urllib2.urlopen(self._url).read()
             objectify.fromstring(resp).time
-        except Exception as e:
+        except Exception:
             rospy.sleep(0.01)
             self._wait_for_vlc()
 
@@ -126,7 +131,7 @@ class HttpController(VLCController):
         self.state = objectify.fromstring(resp)
         try:
             self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
-        except AttributeError as e:
+        except AttributeError:
             rospy.logwarn("Couldn't get player time")
         return self.state
 
@@ -136,7 +141,7 @@ class HttpController(VLCController):
             self._vol = self.state.volume
         try:
             self._time = rospy.Duration(self.state.time)
-        except AttributeError as e:
+        except AttributeError:
             rospy.logwarn("Couldn't get player time")
 
     def get_state(self):
@@ -156,7 +161,7 @@ class HttpController(VLCController):
 
     def stop(self, *args):
         self._send_command('pl_stop')
-        return self.get_state()        
+        return self.get_state()
 
     def back10(self, *args):
         '''Go back 10 seconds'''
@@ -227,9 +232,6 @@ class KeyboardController(VLCController):
             self._time += rospy.Duration(1)
         self.time_pub.publish(self._time)
 
-    def get_state(self):
-        return PlayerState(self._time, self._paused, self._muted)
-
     def toggle_fullscreen(self, *args):
         self._keyboard.tap_key('f')
         return self.get_state()
@@ -244,7 +246,7 @@ class KeyboardController(VLCController):
             self._paused = False
         return self.get_state()
 
-    def pause(self, *args): 
+    def pause(self, *args):
         if not self._paused:
             self._send_sequence(self._keyboard.alt_key, self._keyboard.control_r_key, 'p')
             self._paused = True
@@ -281,11 +283,11 @@ if __name__ == '__main__':
 
     vlc = HttpController()
 
-    play_service = rospy.Service('play', Play, vlc.play)    
-    pause_service = rospy.Service('pause', Pause, vlc.pause)   
+    play_service = rospy.Service('play', Play, vlc.play)
+    pause_service = rospy.Service('pause', Pause, vlc.pause)
     stop = rospy.Service('stop', Stop, vlc.stop)
-    back_service = rospy.Service('back10', Back10, vlc.back10)  
-    forward_service = rospy.Service('forward10', Forward10, vlc.forward10)  
+    back_service = rospy.Service('back10', Back10, vlc.back10)
+    forward_service = rospy.Service('forward10', Forward10, vlc.forward10)
     mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)   
     fullscreen_service = rospy.Service('toggle_fullscreen', FullscreenToggle, vlc.toggle_fullscreen)
 

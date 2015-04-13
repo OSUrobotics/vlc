@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 from vlc.player import HttpController
-from std_msgs.msg import String, Empty, Duration
 from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle, FullscreenToggle, StartVideo, VolUp, VolDn
-from vlc.srv import StartVideoResponse
-from vlc.msg import PlayerState
 import rospy
 
 if __name__ == '__main__':
@@ -24,4 +21,3 @@ if __name__ == '__main__':
     vol_dn_service = rospy.Service('vol_dn', VolDn, vlc.vol_dn)
 
     rospy.spin()
-
