@@ -2,6 +2,7 @@
 import rospy
 import pykeyboard
 import subprocess
+import shlex
 from std_msgs.msg import Duration
 from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle,\
     FullscreenToggle, StartVideo, VolUp, VolDn
@@ -11,6 +12,7 @@ import abc
 from lxml import objectify
 import urllib
 import urllib2
+from functools import partial
 
 
 class VLCController(object):
@@ -22,6 +24,8 @@ class VLCController(object):
         self._time = rospy.Duration(0)
         self.time_pub = rospy.Publisher('playback_time', Duration)
         self._http = use_http
+        self._process = None
+        self._tic_timer = None
 
     def _tick(self, *args):
         self._update_state()
@@ -92,19 +96,30 @@ class VLCController(object):
         '''Stop playback'''
         return
 
+    def _start_vlc(self, vid_path, _):
+        args = shlex.split('vlc %s --play-and-pause "%s"' % ('--extraintf http' if self._http else '', vid_path))
+        self._process = subprocess.Popen(args)
+
     def start_vlc(self, msg):
         vid_path = msg.path
         self._paused = False
         self._muted = False
         self._time = rospy.Duration(0)
-        self._tic_timer = rospy.Timer(rospy.Duration(1), self._tick)
+
+        if self._process is not None:
+            self._process.terminate()
+            self._tic_timer.shutdown()
+            self._process.wait()
+
         rospy.Timer(
             rospy.Duration(0.00001),
-            lambda x: subprocess.call('vlc %s --play-and-pause "%s"' % ('--extraintf http' if self._http else '', vid_path), shell=True), oneshot=True
+            partial(self._start_vlc, vid_path),
+            oneshot=True
         )
         self._wait_for_vlc()
         self.toggle_fullscreen()
         rospy.set_param('vlc_ready', True)
+        self._tic_timer = rospy.Timer(rospy.Duration(0.25), self._tick)
         return StartVideoResponse()
 
 
@@ -126,13 +141,15 @@ class HttpController(VLCController):
         rospy.sleep(0.05)
 
     def _send_command(self, command, val=''):
-        url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
-        resp = urllib2.urlopen(url).read()
-        self.state = objectify.fromstring(resp)
         try:
+            url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
+            resp = urllib2.urlopen(url).read()
+            self.state = objectify.fromstring(resp)
             self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
         except AttributeError:
             rospy.logwarn("Couldn't get player time")
+        except urllib2.URLError:
+            rospy.logwarn("Couldn't get player time (HTTP interface doesn't seem to be ready")
         return self.state
 
     def _update_state(self, update_vol=False):
