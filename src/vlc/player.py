@@ -97,7 +97,12 @@ class VLCController(object):
         return
 
     def _start_vlc(self, vid_path, _):
-        args = shlex.split('vlc %s --play-and-pause "%s"' % ('--extraintf http' if self._http else '', vid_path))
+        args = sum([
+            ['vlc'],
+            shlex.split('--extraintf http' if self._http else ''),
+            ['--play-and-pause'],
+            [vid_path],
+        ], [])
         self._process = subprocess.Popen(args)
 
     def start_vlc(self, msg):
@@ -305,7 +310,7 @@ if __name__ == '__main__':
     stop = rospy.Service('stop', Stop, vlc.stop)
     back_service = rospy.Service('back10', Back10, vlc.back10)
     forward_service = rospy.Service('forward10', Forward10, vlc.forward10)
-    mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)   
+    mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)
     fullscreen_service = rospy.Service('toggle_fullscreen', FullscreenToggle, vlc.toggle_fullscreen)
 
     video_play_service = rospy.Service('start_video', StartVideo, vlc.start_vlc)
