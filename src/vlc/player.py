@@ -109,6 +109,7 @@ class VLCController(object):
         vid_path = msg.path
         self._paused = False
         self._muted = False
+        self._length = -1
         self._time = rospy.Duration(0)
 
         if self._process is not None:
@@ -151,6 +152,7 @@ class HttpController(VLCController):
             resp = urllib2.urlopen(url).read()
             self.state = objectify.fromstring(resp)
             self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
+            self._length = self.state.length
         except AttributeError:
             rospy.logwarn("Couldn't get player time")
         except urllib2.URLError:
@@ -169,6 +171,7 @@ class HttpController(VLCController):
     def get_state(self):
         return PlayerState(
             self._time,
+            self.state.volume,
             self.state.state == 'paused',
             self._muted
         )
@@ -230,6 +233,17 @@ class HttpController(VLCController):
             self.pause()
         return self.get_state()
 
+    def set_vol(self, req):
+        print self.state
+        self._send_command('volume', req.vol)
+        return self.get_state()
+
+    def seek(self, req):
+        self._send_command('seek', int(req.time.to_sec()))
+        if req.time.to_sec() > self._length:
+            self._paused = True
+        return self.get_state()
+
 
 class KeyboardController(VLCController):
     def __init__(self):
@@ -237,7 +251,7 @@ class KeyboardController(VLCController):
         self._keyboard = pykeyboard.PyKeyboard()
 
     def get_state(self):
-        return PlayerState(self._time, self._paused, self._muted)
+        return PlayerState(self._time, 0, self._paused, self._muted)
 
     def _wait_for_vlc(self):
         rospy.sleep(0.35)

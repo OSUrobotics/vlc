@@ -22,11 +22,13 @@ add_service_files(
    Stop.srv
    Back10.srv
    Forward10.srv
-   MuteToggle.srv   
-   FullscreenToggle.srv   
+   MuteToggle.srv
+   FullscreenToggle.srv
    StartVideo.srv
    VolUp.srv
    VolDn.srv
+   SetVol.srv
+   Seek.srv
 )
 
 catkin_python_setup()
