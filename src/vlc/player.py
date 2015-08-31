@@ -12,6 +12,8 @@ import abc
 from lxml import objectify
 import urllib
 import urllib2
+import requests
+from requests.auth import HTTPBasicAuth
 from functools import partial
 
 
@@ -99,7 +101,7 @@ class VLCController(object):
     def _start_vlc(self, vid_path, _):
         args = sum([
             ['vlc'],
-            shlex.split('--extraintf http' if self._http else ''),
+            shlex.split('--extraintf http --http-password=ROS' if self._http else ''),
             ['--play-and-pause'],
             [vid_path],
         ], [])
@@ -134,12 +136,13 @@ class HttpController(VLCController):
         super(HttpController, self).__init__(True)
         self._url = 'http://localhost:8080/requests/status.xml'
         self.status = None
+        self._auth = HTTPBasicAuth('', 'ROS')
 
     def _wait_for_vlc(self):
         try:
-            resp = urllib2.urlopen(self._url).read()
+            resp = requests.get(self._url, auth=self._auth).content
             objectify.fromstring(resp).time
-        except Exception:
+        except requests.ConnectionError:
             rospy.sleep(0.01)
             self._wait_for_vlc()
 
@@ -149,7 +152,7 @@ class HttpController(VLCController):
     def _send_command(self, command, val=''):
         try:
             url = self._url + '?' + urllib.urlencode(dict(command=command, val=val))
-            resp = urllib2.urlopen(url).read()
+            resp = requests.get(url, auth=self._auth).content
             self.state = objectify.fromstring(resp)
             self._time = max(rospy.Duration(self.state.time), rospy.Duration(0))
             self._length = self.state.length
