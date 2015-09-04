@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from vlc.player import HttpController
+from vlc.player import HttpController, CtypesController
 from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle,\
     FullscreenToggle, StartVideo, VolUp, VolDn, SetVol, Seek
 import rospy
@@ -7,7 +7,7 @@ import rospy
 if __name__ == '__main__':
     rospy.init_node('vlc')
 
-    vlc = HttpController()
+    vlc = CtypesController()
 
     play_service = rospy.Service('play', Play, vlc.play)
     pause_service = rospy.Service('pause', Pause, vlc.pause)

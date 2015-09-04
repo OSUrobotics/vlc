@@ -15,7 +15,10 @@ import urllib2
 import requests
 from requests.auth import HTTPBasicAuth
 from functools import partial
-
+from vlc import libvlc        
+from multiprocessing import Process, Queue, Manager
+import os
+import sys
 
 class VLCController(object):
     __metaclass__ = abc.ABCMeta
@@ -314,6 +317,237 @@ class KeyboardController(VLCController):
 
     def vol_dn(self, *args):
         self._send_sequence(self._keyboard.control_key, self._keyboard.down_key)
+        return self.get_state()
+
+class CtypesController(VLCController):
+
+    class SubProcessController(object):
+        def __init__(self, queue, state, use_http=False):
+            # super(CtypesController.SubProcessController, self).__init__(False)
+            self.player = None
+            self.marquee_timer = None
+            self.state = state
+            import sys
+            print 'ok...'
+            rospy.loginfo('asdfasdf')
+            sys.stdout.flush()
+            
+            r = rospy.Rate(10)
+            while not rospy.is_shutdown():
+                func, args = queue.get()
+                getattr(self, func)(*args)
+
+        def start_vlc(self, msg):
+            self.player = libvlc.MediaPlayer('file://' + msg.path)
+            self.player.play()
+            rospy.Timer(rospy.Duration(0.5), self._update_state)
+            self._wait_for_vlc()
+            self._update_state()
+            return StartVideoResponse()
+
+        def _update_state(self, *_):
+            self.state[0] = rospy.Duration(self.player.get_time() / 1000.0)
+            self.state[1] = self._vol_pc_to_9(self.player.audio_get_volume())
+            self.state[2] = self.player.get_state() == libvlc.State.Paused
+            self.state[3] = self.player.audio_get_mute()
+            sys.stdout.flush()
+
+
+
+        def _wait_for_vlc(self):
+            '''Blocks until VLC is available'''
+            while not self.player.is_playing() and not rospy.is_shutdown():
+                rospy.sleep(0.05)
+
+
+        # def get_state(self):
+        #     '''Returns the player state as a service response'''
+        #     return PlayerState(
+        #         self._time,
+        #         self.state.volume,
+        #         self.state.state == 'paused',
+        #         self._muted
+        #     )
+
+        def clear_marquee(self, _=None):
+            self.marquee('')
+
+        def marquee(self, text, timeout=0):
+            self.player.video_set_marquee_int(libvlc.VideoMarqueeOption.Enable, 1)
+            self.player.video_set_marquee_string(libvlc.VideoMarqueeOption.Text, text)
+            if self.marquee_timer:
+                self.marquee_timer.shutdown()
+            if timeout > 0:
+                self.marquee_timer = rospy.Timer(rospy.Duration(timeout), self.clear_marquee, oneshot=True)
+
+        def toggle_fullscreen(self, *args):
+            '''Toggles fullscreen'''
+            self.player.toggle_fullscreen()
+
+        def playpause(self):
+            '''Toggles play/pause'''
+            if self.player.get_state() != libvlc.State.Paused:
+                self.marquee('Paused')
+            else:
+                self.clear_marquee()
+            self.player.pause()
+
+        def play(self, *args):
+            '''Play. Does nothing if already playing'''
+            self.player.play()
+            self.clear_marquee()
+            self._update_state()
+
+        def pause(self, *args):
+            '''Pause. Does nothing if already paused'''
+            self.player.set_pause(True)
+            self._update_state()
+            self.state[2] = True
+            self.marquee('Paused')
+
+        def back10(self, *args):
+            '''Skip back 10 seconds'''
+            self.player.set_time(int((self.state[0].to_sec() - 10) * 1000))
+            self.marquee('<<', 3)
+            self._update_state()
+
+        def forward10(self, *args):
+            '''Skip forward 10 seconds'''
+            self.player.set_time(int((self.state[0].to_sec() + 10) * 1000))
+            self.marquee('>>', 3)
+            self._update_state()
+
+        def seek(self, req):
+            self.player.set_time(int(req.time.to_sec()) * 1000)
+            self._update_state()
+
+        def mute(self, *args):
+            '''Toggles mute'''
+            self.player.audio_toggle_mute()
+            if self.player.audio_get_mute():
+                self.marquee('Muted')
+            else:
+                self.clear_marquee()
+            self._update_state()
+
+        def vol_up(self, *args):
+            '''Increase volume'''
+            newvol = self._vol_9_to_pc(self.state[1] + 15)
+            self.player.audio_set_volume(newvol)
+            self.marquee('Vol %s%%' % newvol, 3)
+            self._update_state()
+
+        def vol_dn(self, *args):
+            '''Decrease volume'''
+            newvol = self._vol_9_to_pc(self.state[1] - 15)
+            self.player.audio_set_volume(newvol)
+            self.marquee('Vol %s%%' % newvol, 3)
+            self._update_state()
+
+        def set_vol(self, req):
+            '''Set the volume to a specific level'''
+            self.player.audio_set_volume(self._vol_9_to_pc(req.vol))
+            self._update_state()
+
+        def stop(self, *args):
+            '''Stop playback'''
+            self.player.stop()
+            self._update_state()
+
+        def _vol_pc_to_9(self, pc):
+            return int(256.0/100 * pc)
+
+        def _vol_9_to_pc(self, nine):
+            return int(100.0/256 * nine)
+
+
+    def __init__(self, use_http=False):
+        super(CtypesController, self).__init__(False)
+        self.command_queue = Queue()
+        manager = Manager()
+        self.state = manager.list([rospy.Duration(0), 0, False, False])
+
+        p = Process(target=CtypesController.SubProcessController, args=(self.command_queue, self.state))
+        p.start()
+
+    def _update_state(self, *_):
+        pass
+
+    def run_in_process(self, cmd, *args):
+        self.command_queue.put([cmd, args])
+
+    def start_vlc(self, msg):
+        print 'starting', 'file://' + msg.path
+        self.run_in_process('start_vlc', msg)
+
+        return StartVideoResponse()
+
+    def _wait_for_vlc(self):
+        '''Blocks until VLC is available'''
+        return
+
+    def get_state(self):
+        '''Returns the player state as a service response'''
+        return PlayerState(*self.state)
+
+    def toggle_fullscreen(self, *args):
+        '''Toggles fullscreen'''
+        self.run_in_process('toggle_fullscreen', *args)
+        return self.get_state()
+
+
+    def playpause(self):
+        '''Toggles play/pause'''
+        self.run_in_process('playpause', *args)
+        return self.get_state()
+
+    def play(self, *args):
+        '''Play. Does nothing if already playing'''
+        self.run_in_process('play', *args)
+        return self.get_state()
+
+    def pause(self, *args):
+        '''Pause. Does nothing if already paused'''
+        self.run_in_process('pause', *args)
+        return self.get_state()
+
+    def back10(self, *args):
+        '''Skip back 10 seconds'''
+        self.run_in_process('back10', *args)
+        return self.get_state()
+
+    def forward10(self, *args):
+        '''Skip forward 10 seconds'''
+        self.run_in_process('forward10', *args)
+        return self.get_state()
+
+    def seek(self, req):
+        self.run_in_process('seek', req)
+        return self.get_state()
+
+    def mute(self, *args):
+        '''Toggles mute'''
+        self.run_in_process('mute', *args)
+        return self.get_state()
+
+    def vol_up(self, *args):
+        '''Increase volume'''
+        self.run_in_process('vol_up', *args)
+        return self.get_state()
+
+    def vol_dn(self, *args):
+        '''Decrease volume'''
+        self.run_in_process('vol_dn', *args)
+        return self.get_state()
+
+    def set_vol(self, req):
+        '''Set the volume to a specific level'''
+        self.run_in_process('set_vol', req)
+        return self.get_state()
+
+    def stop(self, *args):
+        '''Stop playback'''
+        self.run_in_process('stop', *args)
         return self.get_state()
 
 
