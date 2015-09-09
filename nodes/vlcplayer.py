@@ -7,7 +7,8 @@ import rospy
 if __name__ == '__main__':
     rospy.init_node('vlc')
 
-    vlc = CtypesController()
+    vlc = HttpController()
+    #vlc = CtypesController()
 
     play_service = rospy.Service('play', Play, vlc.play)
     pause_service = rospy.Service('pause', Pause, vlc.pause)
