@@ -104,6 +104,7 @@ class VLCController(object):
     def _start_vlc(self, vid_path, _):
         args = sum([
             ['vlc'],
+            #shlex.split('--extraintf http' if self._http else ''),
             shlex.split('--extraintf http --http-password=ROS' if self._http else ''),
             ['--play-and-pause'],
             [vid_path],
@@ -216,13 +217,13 @@ class HttpController(VLCController):
 
     def vol_up(self, *args):
         '''Increase volume'''
-        self._send_command('volume', '+15')
+        self._send_command('volume', '+75')
         self._vol = self.state.volume
         return self.get_state()
 
     def vol_dn(self, *args):
         '''Lower volume'''
-        self._send_command('volume', '-15')
+        self._send_command('volume', '-75')
         self._vol = self.state.volume
         return self.get_state()
 
@@ -379,6 +380,7 @@ class CtypesController(VLCController):
                 self.marquee_timer.shutdown()
             if timeout > 0:
                 self.marquee_timer = rospy.Timer(rospy.Duration(timeout), self.clear_marquee, oneshot=True)
+            sys.stdout.flush()
 
         def toggle_fullscreen(self, *args):
             '''Toggles fullscreen'''
@@ -432,14 +434,14 @@ class CtypesController(VLCController):
 
         def vol_up(self, *args):
             '''Increase volume'''
-            newvol = self._vol_9_to_pc(self.state[1] + 15)
+            newvol = self._vol_9_to_pc(self.state[1] + 75)
             self.player.audio_set_volume(newvol)
             self.marquee('Vol %s%%' % newvol, 3)
             self._update_state()
 
         def vol_dn(self, *args):
             '''Decrease volume'''
-            newvol = self._vol_9_to_pc(self.state[1] - 15)
+            newvol = self._vol_9_to_pc(self.state[1] - 75)
             self.player.audio_set_volume(newvol)
             self.marquee('Vol %s%%' % newvol, 3)
             self._update_state()
