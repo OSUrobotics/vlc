@@ -128,6 +128,8 @@ class VLCController(object):
             oneshot=True
         )
         self._wait_for_vlc()
+
+        rospy.sleep(0.5) # this pause exists so we don't get an error going full screen
         self.toggle_fullscreen()
         rospy.set_param('vlc_ready', True)
         self._tic_timer = rospy.Timer(rospy.Duration(0.25), self._tick)
@@ -142,15 +144,16 @@ class HttpController(VLCController):
         self._auth = HTTPBasicAuth('', 'ROS')
 
     def _wait_for_vlc(self):
-        try:
-            resp = requests.get(self._url, auth=self._auth).content
-            objectify.fromstring(resp).time
-        except requests.ConnectionError:
-            rospy.sleep(0.01)
-            self._wait_for_vlc()
-
-        self._update_state(update_vol=True)
-        rospy.sleep(0.05)
+        ready = False
+        while not ready and not rospy.is_shutdown():
+            try:
+                resp = requests.get(self._url, auth=self._auth).content
+                resp_obj = objectify.fromstring(resp)
+                if hasattr(resp_obj, 'time') and hasattr(resp_obj, 'volume'):
+                    ready = True
+                    self._update_state(update_vol=True)
+            except requests.ConnectionError, AttributeError:
+                rospy.sleep(0.01)
 
     def _send_command(self, command, val=''):
         try:
@@ -197,6 +200,13 @@ class HttpController(VLCController):
     def back10(self, *args):
         '''Go back 10 seconds'''
         self._send_command('seek', '-10')
+        return self.get_state()
+
+    def forward10slow(self, *args):
+        jumps = 10
+        for _ in range(jumps):
+            self._send_command('seek', '+%i' % (10/jumps))
+            rospy.sleep(0.1)
         return self.get_state()
 
     def forward10(self, *args):

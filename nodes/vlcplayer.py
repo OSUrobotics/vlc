@@ -7,13 +7,14 @@ import rospy
 if __name__ == '__main__':
     rospy.init_node('vlc')
 
-    vlc = CtypesController()
+    vlc = HttpController()
 
     play_service = rospy.Service('play', Play, vlc.play)
     pause_service = rospy.Service('pause', Pause, vlc.pause)
     stop = rospy.Service('stop', Stop, vlc.stop)
     back_service = rospy.Service('back10', Back10, vlc.back10)
     forward_service = rospy.Service('forward10', Forward10, vlc.forward10)
+    forward_slow_service = rospy.Service('forward10slow', Forward10, vlc.forward10slow)
     mute_service = rospy.Service('toggle_mute', MuteToggle, vlc.mute)
     fullscreen_service = rospy.Service('toggle_fullscreen', FullscreenToggle, vlc.toggle_fullscreen)
 
