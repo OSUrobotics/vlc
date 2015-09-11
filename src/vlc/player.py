@@ -104,7 +104,7 @@ class VLCController(object):
         return
 
     def _report(self, command, data, caller):
-        r = CommandReport(command, data, caller, self.condition, self._time)
+        r = CommandReport(command, data, caller, self.condition, self._time, self.subject_id)
         self.report_pub.publish(r)
 
     def _start_vlc(self, vid_path, _):
@@ -116,6 +116,7 @@ class VLCController(object):
             [vid_path],
         ], [])
         self.condition = rospy.get_param('condition', '')
+        self.subject_id = rospy.get_param('subject_id')
         self._process = subprocess.Popen(args)
 
     def start_vlc(self, msg):
