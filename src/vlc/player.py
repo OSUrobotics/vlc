@@ -7,7 +7,7 @@ from std_msgs.msg import Duration
 from vlc.srv import Play, Pause, Stop, Forward10, Back10, MuteToggle,\
     FullscreenToggle, StartVideo, VolUp, VolDn
 from vlc.srv import StartVideoResponse
-from vlc.msg import PlayerState
+from vlc.msg import PlayerState, CommandReport
 import abc
 from lxml import objectify
 import urllib
@@ -28,9 +28,11 @@ class VLCController(object):
         self._muted = False
         self._time = rospy.Duration(0)
         self.time_pub = rospy.Publisher('playback_time', Duration)
+        self.report_pub = rospy.Publisher('command_report', CommandReport)
         self._http = use_http
         self._process = None
         self._tic_timer = None
+        self.condition = ''
 
     def _tick(self, *args):
         self._update_state()
@@ -101,14 +103,19 @@ class VLCController(object):
         '''Stop playback'''
         return
 
+    def _report(self, command, data, caller):
+        r = CommandReport(command, data, caller, self.condition, self._time)
+        self.report_pub.publish(r)
+
     def _start_vlc(self, vid_path, _):
         args = sum([
             ['vlc'],
-            #shlex.split('--extraintf http' if self._http else ''),
+            # shlex.split('--extraintf http' if self._http else ''),
             shlex.split('--extraintf http --http-password=ROS' if self._http else ''),
             ['--play-and-pause'],
             [vid_path],
         ], [])
+        self.condition = rospy.get_param('condition', '')
         self._process = subprocess.Popen(args)
 
     def start_vlc(self, msg):
@@ -186,53 +193,63 @@ class HttpController(VLCController):
             self._muted
         )
 
-    def play(self, *args):
+    def play(self, req):
+        self._report('play', -1, req._connection_header['callerid'])
         self._send_command('pl_play')
         return self.get_state()
 
-    def pause(self, *args):
+    def pause(self, req):
+        self._report('pause', -1, req._connection_header['callerid'])
         self._send_command('pl_pause')
         return self.get_state()
 
-    def stop(self, *args):
+    def stop(self, req):
+        self._report('stop', -1, req._connection_header['callerid'])
         self._send_command('pl_stop')
         return self.get_state()
 
-    def back10(self, *args):
+    def back10(self, req):
         '''Go back 10 seconds'''
+        self._report('back10', -1, req._connection_header['callerid'])
         self._send_command('seek', '-10')
         return self.get_state()
 
-    def forward10slow(self, *args):
+    def forward10slow(self, req):
+        self._report('forward10slow', -1, req._connection_header['callerid'])
         jumps = 10
         for _ in range(jumps):
             self._send_command('seek', '+%i' % (10/jumps))
             rospy.sleep(0.1)
         return self.get_state()
 
-    def forward10(self, *args):
+    def forward10(self, req):
         '''Skip forward 10 seconds'''
+        self._report('forward10', -1, req._connection_header['callerid'])
         self._send_command('seek', '+10')
         return self.get_state()
 
-    def mute(self, *args):
+    def mute(self, req):
         '''Toggles mute'''
         if self._muted:
+            self._report('unmute', -1, req._connection_header['callerid'])
             self._send_command('volume', self._vol)
             self._muted = False
         else:
+            self._report('mute', -1, req._connection_header['callerid'])
             self._send_command('volume', 0)
             self._muted = True
         return self.get_state()
 
-    def vol_up(self, *args):
+    def vol_up(self, req):
         '''Increase volume'''
+        self._report('vol_up', self._vol, req._connection_header['callerid'])
         self._send_command('volume', '+75')
         self._vol = self.state.volume
         return self.get_state()
 
-    def vol_dn(self, *args):
+    def vol_dn(self, req):
         '''Lower volume'''
+        self._report('vol_dn', self._vol, req._connection_header['callerid'])
         self._send_command('volume', '-75')
         self._vol = self.state.volume
         return self.get_state()
@@ -245,17 +262,20 @@ class HttpController(VLCController):
     def playpause(self):
         '''Toggles play/pause'''
         if self._paused:
+            self._report('toggle_play_play', -1, req._connection_header['callerid'])
             self.play()
         else:
+            self._report('toggle_play_pause', -1, req._connection_header['callerid'])
             self.pause()
         return self.get_state()
 
     def set_vol(self, req):
-        print self.state
+        self._report('set_vol', req.vol, req._connection_header['callerid'])
         self._send_command('volume', req.vol)
         return self.get_state()
 
     def seek(self, req):
+        self._report('seek', req.time.to_sec(), req._connection_header['callerid'])
         self._send_command('seek', int(req.time.to_sec()))
         if req.time.to_sec() > self._length:
             self._paused = True

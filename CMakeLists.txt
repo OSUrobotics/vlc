@@ -11,6 +11,7 @@ add_message_files(
    DIRECTORY msg
    FILES
    PlayerState.msg
+   CommandReport.msg
 )
 
 ## Generate services in the 'srv' folder
