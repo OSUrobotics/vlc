@@ -33,6 +33,7 @@ class VLCController(object):
         self._process = None
         self._tic_timer = None
         self.condition = ''
+        self.MAX_VOL = 450
 
     def _tick(self, *args):
         self._update_state()
@@ -116,7 +117,7 @@ class VLCController(object):
             [vid_path],
         ], [])
         self.condition = rospy.get_param('condition', '')
-        self.subject_id = rospy.get_param('subject_id')
+        self.subject_id = rospy.get_param('subject_id', '')
         self._process = subprocess.Popen(args)
 
     def start_vlc(self, msg):
@@ -244,8 +245,11 @@ class HttpController(VLCController):
     def vol_up(self, req):
         '''Increase volume'''
         self._report('vol_up', self._vol, req._connection_header['callerid'])
-        self._send_command('volume', '+75')
-        self._vol = self.state.volume
+        self._update_state(update_vol=True)
+        incr = min(75, self.MAX_VOL - self._vol)
+        self._send_command('volume', '+%s' % incr)
+        self._update_state(update_vol=True)
+
         return self.get_state()
 
     def vol_dn(self, req):
@@ -272,7 +276,9 @@ class HttpController(VLCController):
 
     def set_vol(self, req):
         self._report('set_vol', req.vol, req._connection_header['callerid'])
-        self._send_command('volume', req.vol)
+        vol = min(req.vol, self.MAX_VOL)
+        self._vol = vol
+        self._send_command('volume', vol)
         return self.get_state()
 
     def seek(self, req):
